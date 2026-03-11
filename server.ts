@@ -28,11 +28,11 @@ async function startServer() {
 
   // Create a new survey
   app.post("/api/surveys", async (req, res) => {
-    const { question, options, languages, saveToFavorites } = req.body;
+    const { name, question, options, languages, saveToFavorites } = req.body;
     try {
       const { data, error } = await supabase
         .from("surveys")
-        .insert([{ question, options, languages }])
+        .insert([{ name, question, options, languages }])
         .select()
         .single();
       
@@ -41,7 +41,7 @@ async function startServer() {
       if (saveToFavorites) {
         await supabase
           .from("favorites")
-          .insert([{ question, options, languages }]);
+          .insert([{ name: name || question.substring(0, 50), question, options, languages }]);
       }
 
       res.json(data);
@@ -68,11 +68,11 @@ async function startServer() {
   });
 
   app.post("/api/favorites", async (req, res) => {
-    const { question, options, languages } = req.body;
+    const { name, question, options, languages } = req.body;
     try {
       const { data, error } = await supabase
         .from("favorites")
-        .insert([{ question, options, languages }])
+        .insert([{ name, question, options, languages }])
         .select()
         .single();
       
@@ -100,12 +100,13 @@ async function startServer() {
     }
   });
 
-  // Get active survey (the latest one)
+  // Get active survey (the latest one, not deleted)
   app.get("/api/surveys/active", async (req, res) => {
     try {
       const { data, error } = await supabase
         .from("surveys")
         .select("*")
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
@@ -117,6 +118,93 @@ async function startServer() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to fetch survey" });
+    }
+  });
+
+  // Get survey by ID
+  app.get("/api/surveys/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { data, error } = await supabase
+        .from("surveys")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch survey" });
+    }
+  });
+
+  // Get all surveys (with filters)
+  app.get("/api/surveys", async (req, res) => {
+    const { includeDeleted } = req.query;
+    try {
+      let query = supabase.from("surveys").select("*").order("created_at", { ascending: false });
+      if (includeDeleted !== 'true') {
+        query = query.is("deleted_at", null);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch surveys" });
+    }
+  });
+
+  // Get count of surveys created today
+  app.get("/api/surveys/count-today", async (req, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { count, error } = await supabase
+        .from("surveys")
+        .select("*", { count: 'exact', head: true })
+        .gte("created_at", `${today}T00:00:00`)
+        .lte("created_at", `${today}T23:59:59`);
+      
+      if (error) throw error;
+      res.json({ count: count || 0 });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch count" });
+    }
+  });
+
+  // Soft Delete survey
+  app.delete("/api/surveys/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { error } = await supabase
+        .from("surveys")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", id);
+      
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to delete survey" });
+    }
+  });
+
+  // Restore survey
+  app.post("/api/surveys/:id/restore", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { error } = await supabase
+        .from("surveys")
+        .update({ deleted_at: null })
+        .eq("id", id);
+      
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to restore survey" });
     }
   });
 

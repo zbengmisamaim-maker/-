@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, Globe, User, Send, Calendar } from "lucide-react";
 import { Survey, Language, TRANSLATIONS } from "../types";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -11,6 +11,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function SurveyPage() {
+  const { id } = useParams();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [selectedLang, setSelectedLang] = useState<Language | null>(null);
   const [name, setName] = useState("");
@@ -20,8 +21,8 @@ export default function SurveyPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    // status is already loading by default now
-    fetch("/api/surveys/active")
+    const url = id === 'active' ? "/api/surveys/active" : `/api/surveys/${id}`;
+    fetch(url)
       .then((res) => {
         if (res.status === 404) {
           setStatus("no-survey");
@@ -47,7 +48,7 @@ export default function SurveyPage() {
         setStatus("error");
         setErrorMessage("שגיאה בחיבור לשרת. וודא שהגדרת את Supabase כראוי.");
       });
-  }, []);
+  }, [id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,8 +174,9 @@ export default function SurveyPage() {
     <div className="relative min-h-[70vh] flex items-center justify-center py-12 px-4">
       {/* Background Decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-20 w-64 h-64 bg-emerald-100/50 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-orange-100/50 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 -left-20 w-64 h-64 bg-indigo-100/50 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-rose-100/50 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40rem] h-[40rem] bg-amber-50/30 rounded-full blur-[120px]" />
       </div>
 
       <motion.div
@@ -182,17 +184,20 @@ export default function SurveyPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
-          "w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl shadow-black/5 border border-black/5 p-8 md:p-12 space-y-10 relative z-10",
+          "w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl shadow-indigo-500/10 border-8 border-indigo-100 p-8 md:p-12 space-y-10 relative z-10",
           isRTL ? "text-right" : "text-left"
         )}
         dir={isRTL ? "rtl" : "ltr"}
       >
-        <header className="space-y-4">
+        {/* Decorative Inner Frame */}
+        <div className="absolute inset-4 rounded-[2rem] border-2 border-indigo-50 pointer-events-none" />
+        
+        <header className="space-y-4 relative z-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
-              <span className="text-emerald-600 font-black text-xs uppercase tracking-[0.2em]">{getLabel('title')}</span>
+              <span className="text-indigo-600 font-black text-xs uppercase tracking-[0.2em]">{getLabel('title')}</span>
               <h1 className="text-3xl md:text-5xl font-black leading-[1.1] tracking-tight text-slate-900">
-                {survey.question}
+                {survey.question.endsWith('?') ? survey.question : `${survey.question}?`}
               </h1>
             </div>
             <div className="shrink-0">
@@ -208,7 +213,7 @@ export default function SurveyPage() {
           {/* Name Input */}
           <div className="space-y-4">
             <label className="flex items-center gap-2 text-sm font-black text-slate-400 uppercase tracking-widest">
-              <User className="w-4 h-4 text-emerald-500" />
+              <User className="w-4 h-4 text-indigo-500" />
               {getLabel('nameLabel')}
             </label>
             <div className="relative group">
@@ -217,10 +222,10 @@ export default function SurveyPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full p-6 bg-slate-50 rounded-3xl border-2 border-transparent focus:border-emerald-500 focus:bg-white outline-none transition-all text-xl font-bold placeholder:text-slate-300"
+                className="w-full p-6 bg-slate-50 rounded-3xl border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none transition-all text-xl font-bold placeholder:text-slate-300"
                 placeholder={isBilingual ? "הכנס את שמך... / Введите ваше имя..." : (isRTL ? "הכנס את שמך..." : "Введите ваше имя...")}
               />
-              <div className="absolute inset-0 rounded-3xl ring-4 ring-emerald-500/0 group-focus-within:ring-emerald-500/10 transition-all pointer-events-none" />
+              <div className="absolute inset-0 rounded-3xl ring-4 ring-indigo-500/0 group-focus-within:ring-indigo-500/10 transition-all pointer-events-none" />
             </div>
           </div>
 
@@ -230,54 +235,62 @@ export default function SurveyPage() {
               {getLabel('optionsLabel')}
             </label>
             <div className="grid grid-cols-1 gap-4">
-              {survey.options.map((option) => (
-                <label
-                  key={option}
-                  className={cn(
-                    "relative flex items-center p-6 rounded-[2rem] border-2 cursor-pointer transition-all duration-300 group overflow-hidden",
-                    selectedOption === option 
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xl shadow-emerald-600/20 scale-[1.02]" 
-                      : "bg-slate-50 border-transparent hover:border-emerald-200 hover:bg-emerald-50/50"
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="lunch-option"
-                    value={option}
-                    checked={selectedOption === option}
-                    onChange={(e) => setSelectedOption(e.target.value)}
-                    className="sr-only"
-                  />
-                  
-                  <div className="flex-1 relative z-10">
-                    {renderOptionText(option)}
-                  </div>
+              {survey.options.map((option, idx) => {
+                const optionColors = [
+                  "bg-indigo-600 border-indigo-600 shadow-indigo-600/20",
+                  "bg-rose-600 border-rose-600 shadow-rose-600/20",
+                  "bg-amber-600 border-amber-600 shadow-amber-600/20",
+                  "bg-emerald-600 border-emerald-600 shadow-emerald-600/20",
+                  "bg-violet-600 border-violet-600 shadow-violet-600/20",
+                ];
+                const activeColor = optionColors[idx % optionColors.length];
 
-                  {selectedOption === option ? (
-                    <motion.div 
-                      layoutId="check" 
-                      className={cn("relative z-10", isRTL ? "mr-4" : "ml-4")}
-                    >
-                      <div className="bg-white/20 p-2 rounded-full backdrop-blur-md">
-                        <CheckCircle2 className="w-6 h-6" />
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <div className="w-6 h-6 rounded-full border-2 border-slate-200 group-hover:border-emerald-300 transition-colors" />
-                  )}
+                return (
+                  <label
+                    key={option}
+                    className={cn(
+                      "relative flex items-center p-6 rounded-[2rem] border-2 cursor-pointer transition-all duration-300 group overflow-hidden",
+                      selectedOption === option 
+                        ? `${activeColor} text-white shadow-xl scale-[1.02]` 
+                        : `bg-slate-50 border-transparent hover:border-indigo-200 hover:bg-indigo-50/50`
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="lunch-option"
+                      value={option}
+                      checked={selectedOption === option}
+                      onChange={(e) => setSelectedOption(e.target.value)}
+                      className="sr-only"
+                    />
+                    
+                    <div className="flex-1 relative z-10">
+                      {renderOptionText(option)}
+                    </div>
 
-                  {/* Hover Effect Decoration */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/0 via-emerald-400/0 to-emerald-400/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                </label>
-              ))}
+                    {selectedOption === option ? (
+                      <motion.div 
+                        layoutId="check" 
+                        className={cn("relative z-10", isRTL ? "mr-4" : "ml-4")}
+                      >
+                        <div className="bg-white/20 p-2 rounded-full backdrop-blur-md">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <div className="w-6 h-6 rounded-full border-2 border-slate-200 group-hover:border-indigo-300 transition-colors" />
+                    )}
+                  </label>
+                );
+              })}
               
               {/* Other Option */}
               <label
                 className={cn(
                   "relative flex flex-col p-6 rounded-[2rem] border-2 cursor-pointer transition-all duration-300 group",
                   selectedOption === "Other" 
-                    ? "bg-emerald-600 text-white border-emerald-600 shadow-xl shadow-emerald-600/20 scale-[1.02]" 
-                    : "bg-slate-50 border-transparent hover:border-emerald-200 hover:bg-emerald-50/50"
+                    ? "bg-slate-800 text-white border-slate-800 shadow-xl shadow-slate-800/20 scale-[1.02]" 
+                    : "bg-slate-50 border-transparent hover:border-indigo-200 hover:bg-indigo-50/50"
                 )}
               >
                 <div className="flex items-center justify-between w-full relative z-10">
@@ -335,7 +348,7 @@ export default function SurveyPage() {
 
           <button
             disabled={status === "loading" || !name || !selectedOption}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white p-6 rounded-[2rem] font-black text-xl shadow-2xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-4 active:scale-[0.98] group"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white p-6 rounded-[2rem] font-black text-xl shadow-2xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-4 active:scale-[0.98] group"
           >
             {status === "loading" ? (
               <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />

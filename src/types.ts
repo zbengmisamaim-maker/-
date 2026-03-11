@@ -1,9 +1,11 @@
 export interface Survey {
   id: number;
+  name?: string;
   question: string;
   options: string[];
   languages: string[];
   created_at: string;
+  deleted_at?: string | null;
 }
 
 export interface Vote {
@@ -17,6 +19,7 @@ export interface Vote {
 
 export interface Favorite {
   id: number;
+  name: string;
   question: string;
   options: string[];
   languages: string[];
@@ -58,6 +61,8 @@ export const TRANSLATIONS = {
     useTemplate: "השתמש בסקר זה",
     noFavorites: "אין סקרים שמורים במועדפים",
     surveyDate: "סקר לתאריך",
+    surveyNameLabel: "שם הסקר (לשימוש פנימי)",
+    favoritesExplainer: "מועדפים הם תבניות של סקרים שאתה אוהב. שמירה במועדפים מאפשרת לך להפעיל את אותו סקר שוב ושוב בימים שונים מבלי להקליד הכל מחדש. התוצאות של כל יום יישמרו בנפרד.",
   },
   ru: {
     title: "Опрос по обеду",
@@ -83,5 +88,7 @@ export const TRANSLATIONS = {
     useTemplate: "Использовать этот опрос",
     noFavorites: "Нет сохраненных опросов",
     surveyDate: "Опрос на дату",
+    surveyNameLabel: "Название опроса (для себя)",
+    favoritesExplainer: "Избранное — это шаблоны опросов. Сохранение в избранное позволяет запускать один и тот же опрос в разные дни, не заново вводя данные. Результаты каждого дня сохраняются отдельно.",
   }
 };

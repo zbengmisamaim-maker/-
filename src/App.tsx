@@ -35,7 +35,7 @@ export default function App() {
           <AnimatePresence mode="wait">
             <Routes>
               <Route path="/" element={<LandingPage />} />
-              <Route path="/survey" element={<SurveyPage />} />
+              <Route path="/survey/:id" element={<SurveyPage />} />
               <Route path="/admin" element={<AdminPanel />} />
             </Routes>
           </AnimatePresence>

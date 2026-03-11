@@ -4,9 +4,19 @@ import { Link } from "react-router-dom";
 import { Utensils, ArrowLeft, ArrowRight, Sparkles, Clock } from "lucide-react";
 
 export default function LandingPage() {
+  const [activeSurveyId, setActiveSurveyId] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/surveys/active")
+      .then(res => res.json())
+      .then(data => {
+        if (data && !data.error) setActiveSurveyId(data.id);
+      })
+      .catch(console.error);
+  }, []);
+
   return (
     <div className="relative min-h-[85vh] flex flex-col items-center justify-center text-center px-4 overflow-hidden">
-      {/* Animated Background Elements */}
       <div className="absolute inset-0 pointer-events-none">
         <motion.div 
           animate={{ 
@@ -59,9 +69,9 @@ export default function LandingPage() {
           >
             <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-slate-900 leading-[0.9]">
               מה אוכלים <br />
-              <span className="text-emerald-600 relative">
+              <span className="text-indigo-600 relative">
                 היום?
-                <svg className="absolute -bottom-2 left-0 w-full h-3 text-emerald-200" viewBox="0 0 100 10" preserveAspectRatio="none">
+                <svg className="absolute -bottom-2 left-0 w-full h-3 text-indigo-200" viewBox="0 0 100 10" preserveAspectRatio="none">
                   <path d="M0 5 Q 25 0, 50 5 T 100 5" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
                 </svg>
               </span>
@@ -89,11 +99,11 @@ export default function LandingPage() {
           className="flex flex-col items-center gap-6"
         >
           <Link
-            to="/survey"
+            to={activeSurveyId ? `/survey/${activeSurveyId}` : "#"}
             className="group relative inline-flex items-center justify-center"
           >
-            <div className="absolute inset-0 bg-emerald-600 rounded-3xl blur-xl opacity-40 group-hover:opacity-60 transition-opacity" />
-            <div className="relative bg-emerald-600 text-white px-10 py-6 rounded-[2rem] font-black text-2xl shadow-xl hover:bg-emerald-700 hover:scale-105 active:scale-95 transition-all flex items-center gap-4">
+            <div className="absolute inset-0 bg-indigo-600 rounded-3xl blur-xl opacity-40 group-hover:opacity-60 transition-opacity" />
+            <div className="relative bg-indigo-600 text-white px-10 py-6 rounded-[2rem] font-black text-2xl shadow-xl hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all flex items-center gap-4">
               <span>למילוי הסקר</span>
               <div className="w-px h-8 bg-white/20 mx-2" />
               <span className="text-lg opacity-80">Пройти опрос</span>

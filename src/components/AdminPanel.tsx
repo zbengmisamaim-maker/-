@@ -9,6 +9,10 @@ const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
 
 export default function AdminPanel() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [allSurveys, setAllSurveys] = useState<Survey[]>([]);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'surveys' | 'trash'>('dashboard');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [newName, setNewName] = useState("");
   const [newQuestion, setNewQuestion] = useState("");
   const [newOptions, setNewOptions] = useState<string[]>(["פיצה", "סושי", "סלט"]);
   const [newLanguages, setNewLanguages] = useState<Language[]>(["he"]);
@@ -21,6 +25,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     loadStats();
+    loadAllSurveys();
     fetch("/api/config")
       .then(res => res.json())
       .then(data => {
@@ -41,13 +46,87 @@ export default function AdminPanel() {
       .catch(err => setError(err.message));
   };
 
+  const loadAllSurveys = async () => {
+    try {
+      const res = await fetch("/api/surveys?includeDeleted=true");
+      if (!res.ok) throw new Error("שגיאה בטעינת סקרים");
+      const data = await res.json();
+      setAllSurveys(data);
+    } catch (err) {
+      setError("שגיאה בטעינת סקרים");
+    }
+  };
+
+  const handleAddToFavorites = async (survey: Survey) => {
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: survey.name || survey.question.substring(0, 50),
+          question: survey.question,
+          options: survey.options,
+          languages: survey.languages,
+        }),
+      });
+      if (res.ok) {
+        alert("הסקר נוסף למועדפים בהצלחה!");
+        loadStats();
+      } else {
+        throw new Error("שגיאה בהוספה למועדפים");
+      }
+    } catch (err) {
+      setError("שגיאה בהוספה למועדפים");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("האם אתה בטוח שברצונך למחוק סקר זה? פעולה זו תעביר את הסקר לסל המחזור.")) return;
+    try {
+      const res = await fetch(`/api/surveys/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        loadAllSurveys();
+        loadStats();
+      }
+    } catch (err) {
+      setError("שגיאה במחיקת סקר");
+    }
+  };
+
+  const handleRestore = async (id: number) => {
+    try {
+      const res = await fetch(`/api/surveys/${id}/restore`, { method: "POST" });
+      if (res.ok) {
+        loadAllSurveys();
+        loadStats();
+      }
+    } catch (err) {
+      setError("שגיאה בשחזור סקר");
+    }
+  };
+
   const handleCreateSurvey = async () => {
-    if (!newQuestion || newOptions.length === 0) return;
+    console.log("handleCreateSurvey clicked", { newQuestion, newOptions });
+    if (!newQuestion || newOptions.length === 0) {
+      console.log("Validation failed", { newQuestion, newOptions });
+      alert("אנא מלא את שאלת הסקר ואת אפשרויות הבחירה.");
+      return;
+    }
+
+    // Check limit
+    const countRes = await fetch("/api/surveys/count-today");
+    const { count } = await countRes.json();
+    console.log("Count today:", count);
+    if (count >= 3) {
+      alert("ניתן לרענן/ליצור סקר חדש עד 3 פעמים ביום בלבד.");
+      return;
+    }
 
     const res = await fetch("/api/surveys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        name: newName,
         question: newQuestion,
         options: newOptions,
         languages: newLanguages,
@@ -55,16 +134,23 @@ export default function AdminPanel() {
       }),
     });
 
+    console.log("Server response:", res.status);
     if (res.ok) {
       const data = await res.json();
       setCreatedSurvey(data);
+      setNewName("");
       setNewQuestion("");
       setSaveToFavorites(false);
       loadStats();
+    } else {
+      const errorData = await res.json();
+      console.error("Server error:", errorData);
+      alert("שגיאה בשמירת הסקר: " + (errorData.error || "שגיאה לא ידועה"));
     }
   };
 
   const handleUseFavorite = (fav: Favorite) => {
+    setNewName(fav.name);
     setNewQuestion(fav.question);
     setNewOptions(fav.options);
     setNewLanguages(fav.languages as Language[]);
@@ -115,9 +201,20 @@ export default function AdminPanel() {
           <Link to="/" className="p-3 bg-white rounded-2xl border border-black/5 hover:bg-black/5 transition-colors">
             <ArrowRight className="w-5 h-5" />
           </Link>
-          <div>
-            <h1 className="text-3xl font-black tracking-tight">לוח בקרה למנהל</h1>
-            <p className="text-black/40">נהל סקרים וצפה בסטטיסטיקות בזמן אמת</p>
+          <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-black/5">
+            {[
+              { id: 'dashboard', label: 'לוח בקרה' },
+              { id: 'surveys', label: 'כל הסקרים' },
+              { id: 'trash', label: 'סל מחזור' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-6 py-3 rounded-xl font-bold transition-all ${activeTab === tab.id ? 'bg-black text-white' : 'hover:bg-black/5'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
         <button
@@ -147,15 +244,27 @@ export default function AdminPanel() {
             exit={{ opacity: 0, height: 0 }}
             className="bg-white p-8 rounded-3xl border border-black/5 shadow-xl shadow-black/5 space-y-6 overflow-hidden"
           >
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-black/60">שאלת הסקר</label>
-              <input
-                type="text"
-                value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
-                placeholder="מה תרצו לאכול היום?"
-                className="w-full p-4 bg-[#F8F9FA] rounded-2xl border border-black/5 focus:border-emerald-500 outline-none transition-all text-lg"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-black/60">שם הסקר (לשימוש פנימי)</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="למשל: סקר יום ראשון"
+                  className="w-full p-4 bg-[#F8F9FA] rounded-2xl border border-black/5 focus:border-emerald-500 outline-none transition-all text-lg"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-black/60">שאלת הסקר</label>
+                <input
+                  type="text"
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  placeholder="מה תרצו לאכול היום?"
+                  className="w-full p-4 bg-[#F8F9FA] rounded-2xl border border-black/5 focus:border-emerald-500 outline-none transition-all text-lg"
+                />
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -209,7 +318,7 @@ export default function AdminPanel() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -219,6 +328,9 @@ export default function AdminPanel() {
                 />
                 <span className="text-sm font-bold text-black/60 group-hover:text-black transition-colors">שמור במועדפים לשימוש חוזר</span>
               </label>
+              <p className="text-xs text-black/40 bg-black/5 p-3 rounded-xl">
+                <strong>מה זה מועדפים?</strong> מועדפים הם תבניות של סקרים שאתה אוהב. שמירה במועדפים מאפשרת לך להפעיל את אותו סקר שוב ושוב בימים שונים מבלי להקליד הכל מחדש. התוצאות של כל יום יישמרו בנפרד.
+              </p>
             </div>
 
             <button
@@ -289,7 +401,7 @@ export default function AdminPanel() {
         )}
       </AnimatePresence>
 
-      {stats && (
+      {activeTab === 'dashboard' && stats && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Active Survey Link Card */}
           <div className="lg:col-span-3 bg-gradient-to-r from-emerald-500 to-teal-600 p-8 rounded-3xl text-white shadow-xl shadow-emerald-500/20 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -299,14 +411,27 @@ export default function AdminPanel() {
             </div>
             <div className="flex gap-3">
               <button 
-                onClick={copyLink}
+                onClick={loadStats}
+                className="p-3 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-sm"
+                title="רענן נתונים"
+              >
+                <PlusCircle className="w-5 h-5 rotate-45" />
+              </button>
+              <button 
+                onClick={() => {
+                  if (stats?.activeSurvey) {
+                    navigator.clipboard.writeText(`${appUrl}/survey/${stats.activeSurvey.id}`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
                 className="flex items-center gap-2 px-6 py-3 bg-white/20 hover:bg-white/30 rounded-2xl font-bold transition-all backdrop-blur-sm"
               >
                 {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                 העתק קישור
               </button>
               <a 
-                href={appUrl} 
+                href={stats?.activeSurvey ? `${appUrl}/survey/${stats.activeSurvey.id}` : appUrl}
                 target="_blank" 
                 rel="noreferrer"
                 className="flex items-center gap-2 px-6 py-3 bg-white text-emerald-600 rounded-2xl font-bold transition-all shadow-lg"
@@ -426,7 +551,11 @@ export default function AdminPanel() {
                     className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-4 flex flex-col justify-between"
                   >
                     <div className="space-y-3">
-                      <h3 className="font-bold text-lg leading-tight">{fav.question}</h3>
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-bold text-lg leading-tight">{fav.name || fav.question}</h3>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">תבנית</span>
+                      </div>
+                      <p className="text-sm text-black/40 line-clamp-2">{fav.question}</p>
                       <div className="flex flex-wrap gap-1">
                         {fav.options.slice(0, 3).map(opt => (
                           <span key={opt} className="text-[10px] px-2 py-1 bg-black/5 rounded-full opacity-60">
@@ -461,6 +590,49 @@ export default function AdminPanel() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'surveys' && (
+        <div className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm space-y-6">
+          <input 
+            type="text" 
+            placeholder="חיפוש סקרים..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full p-4 bg-[#F8F9FA] rounded-2xl border border-black/5 outline-none"
+          />
+          <div className="space-y-4">
+            {allSurveys.filter(s => !s.deleted_at && (s.name?.includes(searchQuery) || s.question.includes(searchQuery))).map(survey => (
+              <div key={survey.id} className="flex justify-between items-center p-4 bg-[#F8F9FA] rounded-2xl">
+                <span>{survey.name || survey.question}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => handleAddToFavorites(survey)} className="text-emerald-500 hover:text-emerald-600" title="הוסף למועדפים">
+                    <Star className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => handleDelete(survey.id)} className="text-red-500 hover:text-red-600" title="מחק">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'trash' && (
+        <div className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm space-y-6">
+          <div className="space-y-4">
+            {allSurveys.filter(s => s.deleted_at).map(survey => (
+              <div key={survey.id} className="flex justify-between items-center p-4 bg-[#F8F9FA] rounded-2xl">
+                <div>
+                  <span>{survey.name || survey.question}</span>
+                  <p className="text-xs text-black/40">נוצר: {new Date(survey.created_at).toLocaleDateString()}, נמחק: {new Date(survey.deleted_at!).toLocaleDateString()}</p>
+                </div>
+                <button onClick={() => handleRestore(survey.id)} className="text-emerald-500">שחזר</button>
+              </div>
+            ))}
           </div>
         </div>
       )}
