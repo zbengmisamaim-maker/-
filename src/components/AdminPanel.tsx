@@ -128,8 +128,8 @@ export default function AdminPanel() {
       body: JSON.stringify({
         name: newName,
         question: newQuestion,
-        options: newOptions,
-        languages: newLanguages,
+        options: Array.isArray(newOptions) ? newOptions : [newOptions],
+        languages: Array.isArray(newLanguages) ? newLanguages : [newLanguages],
         saveToFavorites: saveToFavorites,
       }),
     });
@@ -452,23 +452,27 @@ export default function AdminPanel() {
               <span className="text-sm font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">חי</span>
             </div>
             
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats?.daily || []}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="answer" axisLine={false} tickLine={false} tick={{ fill: '#999', fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#999', fontSize: 12 }} />
-                  <Tooltip 
-                    cursor={{ fill: '#f8f9fa' }}
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                    {stats?.daily?.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="h-[300px] w-full min-w-[300px]">
+              {stats?.daily && stats.daily.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.daily}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="answer" axisLine={false} tickLine={false} tick={{ fill: '#999', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#999', fontSize: 12 }} />
+                    <Tooltip 
+                      cursor={{ fill: '#f8f9fa' }}
+                      contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                      {stats.daily.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-black/20">אין נתונים להצגה</div>
+              )}
             </div>
           </div>
 
