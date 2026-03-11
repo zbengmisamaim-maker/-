@@ -1,9 +1,11 @@
+import confetti from 'canvas-confetti';
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Plus, Trash2, BarChart3, Users, Calendar, PlusCircle, ArrowRight, Copy, ExternalLink, Check, Heart, Bookmark, Star } from "lucide-react";
 import { Stats, Language, Survey, Favorite } from "../types";
 import { Link } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
@@ -24,26 +26,83 @@ export default function AdminPanel() {
   const [saveToFavorites, setSaveToFavorites] = useState(false);
 
   useEffect(() => {
+    console.log("AdminPanel mounted");
     loadStats();
     loadAllSurveys();
   }, []);
 
-  const loadStats = () => {
-    fetch("/api/admin/stats")
-      .then((res) => {
-        if (!res.ok) throw new Error("שגיאה בטעינת נתונים מ-Supabase. וודא שהטבלאות קיימות והמפתח תקין.");
-        return res.json();
-      })
-      .then(setStats)
-      .catch(err => setError(err.message));
+  const loadStats = async () => {
+    try {
+      // 1. Get active survey
+      const { data: activeSurvey, error: surveyError } = await supabase
+        .from("surveys")
+        .select("*")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (surveyError) throw surveyError;
+      if (!activeSurvey) {
+        setStats({ activeSurvey: null, daily: [], monthly: [], recentVotes: [] });
+        return;
+      }
+
+      // 2. Get daily votes
+      const today = new Date().toISOString().split('T')[0];
+      const { data: dailyVotes, error: dailyError } = await supabase
+        .from("votes")
+        .select("answer")
+        .eq("survey_id", activeSurvey.id)
+        .gte("created_at", `${today}T00:00:00`);
+
+      if (dailyError) throw dailyError;
+
+      // 3. Get monthly votes
+      const firstOfMonth = new Date();
+      firstOfMonth.setDate(1);
+      firstOfMonth.setHours(0,0,0,0);
+      const { data: monthlyVotes, error: monthlyError } = await supabase
+        .from("votes")
+        .select("answer")
+        .eq("survey_id", activeSurvey.id)
+        .gte("created_at", firstOfMonth.toISOString());
+
+      if (monthlyError) throw monthlyError;
+
+      // 4. Get recent votes
+      const { data: recentVotes, error: recentError } = await supabase
+        .from("votes")
+        .select("*")
+        .eq("survey_id", activeSurvey.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (recentError) throw recentError;
+
+      // Process daily/monthly maps
+      const dailyMap: Record<string, number> = {};
+      dailyVotes.forEach(v => dailyMap[v.answer] = (dailyMap[v.answer] || 0) + 1);
+      const daily = Object.entries(dailyMap).map(([answer, count]) => ({ answer, count }));
+
+      const monthlyMap: Record<string, number> = {};
+      monthlyVotes.forEach(v => monthlyMap[v.answer] = (monthlyMap[v.answer] || 0) + 1);
+      const monthly = Object.entries(monthlyMap).map(([answer, count]) => ({ answer, count }));
+
+      setStats({ activeSurvey, daily, monthly, recentVotes: recentVotes || [] });
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const loadAllSurveys = async () => {
     try {
-      const res = await fetch("/api/surveys?includeDeleted=true");
-      if (!res.ok) throw new Error("שגיאה בטעינת סקרים");
-      const data = await res.json();
-      setAllSurveys(data);
+      const { data, error } = await supabase
+        .from("surveys")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setAllSurveys(data || []);
     } catch (err) {
       setError("שגיאה בטעינת סקרים");
     }
@@ -51,22 +110,17 @@ export default function AdminPanel() {
 
   const handleAddToFavorites = async (survey: Survey) => {
     try {
-      const res = await fetch("/api/favorites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from("favorites")
+        .insert([{
           name: survey.name || survey.question.substring(0, 50),
           question: survey.question,
           options: survey.options,
           languages: survey.languages,
-        }),
-      });
-      if (res.ok) {
-        alert("הסקר נוסף למועדפים בהצלחה!");
-        loadStats();
-      } else {
-        throw new Error("שגיאה בהוספה למועדפים");
-      }
+        }]);
+      if (error) throw error;
+      alert("הסקר נוסף למועדפים בהצלחה!");
+      loadStats();
     } catch (err) {
       setError("שגיאה בהוספה למועדפים");
     }
@@ -75,11 +129,13 @@ export default function AdminPanel() {
   const handleDelete = async (id: number) => {
     if (!confirm("האם אתה בטוח שברצונך למחוק סקר זה? פעולה זו תעביר את הסקר לסל המחזור.")) return;
     try {
-      const res = await fetch(`/api/surveys/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        loadAllSurveys();
-        loadStats();
-      }
+      const { error } = await supabase
+        .from("surveys")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+      loadAllSurveys();
+      loadStats();
     } catch (err) {
       setError("שגיאה במחיקת סקר");
     }
@@ -87,58 +143,89 @@ export default function AdminPanel() {
 
   const handleRestore = async (id: number) => {
     try {
-      const res = await fetch(`/api/surveys/${id}/restore`, { method: "POST" });
-      if (res.ok) {
-        loadAllSurveys();
-        loadStats();
-      }
+      const { error } = await supabase
+        .from("surveys")
+        .update({ deleted_at: null })
+        .eq("id", id);
+      if (error) throw error;
+      loadAllSurveys();
+      loadStats();
     } catch (err) {
       setError("שגיאה בשחזור סקר");
     }
   };
 
   const handleCreateSurvey = async () => {
-    console.log("handleCreateSurvey clicked", { newQuestion, newOptions });
+    console.log("handleCreateSurvey called");
     if (!newQuestion || newOptions.length === 0) {
-      console.log("Validation failed", { newQuestion, newOptions });
       alert("אנא מלא את שאלת הסקר ואת אפשרויות הבחירה.");
       return;
     }
 
     // Check limit
-    const countRes = await fetch("/api/surveys/count-today");
-    const { count } = await countRes.json();
-    console.log("Count today:", count);
-    if (count >= 3) {
+    const today = new Date().toISOString().split('T')[0];
+    console.log("Checking limit for today:", today);
+    const { count, error: countError } = await supabase
+      .from("surveys")
+      .select("*", { count: 'exact', head: true })
+      .gte("created_at", `${today}T00:00:00`)
+      .lte("created_at", `${today}T23:59:59`);
+    
+    if (countError) {
+      console.error("Error checking limit:", countError);
+      setError("שגיאה בבדיקת מכסה: " + countError.message);
+      return;
+    }
+    console.log("Current count:", count);
+    if ((count || 0) >= 3) {
       alert("ניתן לרענן/ליצור סקר חדש עד 3 פעמים ביום בלבד.");
       return;
     }
 
-    const res = await fetch("/api/surveys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newName,
+    console.log("Inserting survey...");
+    const { data, error } = await supabase
+      .from("surveys")
+      .insert([{
+        name: newName || newQuestion.substring(0, 50),
         question: newQuestion,
         options: Array.isArray(newOptions) ? newOptions : [newOptions],
         languages: Array.isArray(newLanguages) ? newLanguages : [newLanguages],
-        saveToFavorites: saveToFavorites,
-      }),
-    });
+      }])
+      .select()
+      .single();
 
-    console.log("Server response:", res.status);
-    if (res.ok) {
-      const data = await res.json();
-      setCreatedSurvey(data);
-      setNewName("");
-      setNewQuestion("");
-      setSaveToFavorites(false);
-      loadStats();
-    } else {
-      const errorData = await res.json();
-      console.error("Server error:", errorData);
-      alert("שגיאה בשמירת הסקר: " + (errorData.error || "שגיאה לא ידועה"));
+    if (error) {
+      console.error("Error inserting survey:", error);
+      setError("שגיאה בשמירת הסקר: " + error.message);
+      return;
     }
+    console.log("Survey inserted:", data);
+
+    if (saveToFavorites) {
+      console.log("Saving to favorites...");
+      await supabase
+        .from("favorites")
+        .insert([{
+          name: newName || newQuestion.substring(0, 50),
+          question: newQuestion,
+          options: Array.isArray(newOptions) ? newOptions : [newOptions],
+          languages: Array.isArray(newLanguages) ? newLanguages : [newLanguages],
+        }]);
+    }
+
+    // Set the survey and generate the correct link
+    setCreatedSurvey(data);
+    setAppUrl(`${window.location.origin}/survey/${data.id}`);
+    setNewName("");
+    setNewQuestion("");
+    setSaveToFavorites(false);
+    loadStats();
+    loadAllSurveys();
+    confetti({
+      particleCount: 150,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
   };
 
   const handleUseFavorite = (fav: Favorite) => {
@@ -155,10 +242,12 @@ export default function AdminPanel() {
     if (!confirm("האם אתה בטוח שברצונך למחוק סקר זה מהמועדפים?")) return;
     
     try {
-      const res = await fetch(`/api/favorites/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        loadStats();
-      }
+      const { error } = await supabase
+        .from("favorites")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      loadStats();
     } catch (err) {
       setError("שגיאה במחיקת מועדף");
     }

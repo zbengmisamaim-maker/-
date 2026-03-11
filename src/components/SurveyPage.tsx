@@ -5,6 +5,7 @@ import { Survey, Language, TRANSLATIONS } from "../types";
 import { Link, useParams } from "react-router-dom";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { supabase } from "../lib/supabase";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -21,62 +22,74 @@ export default function SurveyPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const url = id === 'active' ? "/api/surveys/active" : `/api/surveys/${id}`;
-    fetch(url)
-      .then((res) => {
-        if (res.status === 404) {
+    const fetchSurvey = async () => {
+      setStatus("loading");
+      try {
+        let query = supabase.from("surveys").select("*");
+        if (id === 'active') {
+          query = query.is("deleted_at", null).order("created_at", { ascending: false }).limit(1);
+        } else {
+          query = query.eq("id", id);
+        }
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        if (!data) {
           setStatus("no-survey");
-          return null;
+          return;
         }
-        if (!res.ok) throw new Error("Failed to fetch");
-        return res.json();
-      })
-      .then((data) => {
-        if (data && !data.error) {
-          setSurvey(data);
-          setStatus("idle");
-          // If only one language, set it. If both, we'll use a bilingual mode.
-          if (data.languages?.length === 1) {
-            setSelectedLang(data.languages[0] as Language);
-          } else if (data.languages?.length > 1) {
-            setSelectedLang('he'); // Default to he for bilingual logic
-          }
+        setSurvey(data);
+        setStatus("idle");
+        if (data.languages?.length === 1) {
+          setSelectedLang(data.languages[0] as Language);
+        } else if (data.languages?.length > 1) {
+          setSelectedLang('he');
         }
-      })
-      .catch((err) => {
-        console.error(err);
+      } catch (err: any) {
         setStatus("error");
-        setErrorMessage("שגיאה בחיבור לשרת. וודא שהגדרת את Supabase כראוי.");
-      });
+        setErrorMessage(err.message);
+      }
+    };
+    fetchSurvey();
   }, [id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !selectedOption) return;
+    if (!name || !selectedOption || !survey) return;
 
     setStatus("loading");
     try {
-      const res = await fetch("/api/votes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          surveyId: survey?.id,
-          employeeName: name,
-          answer: selectedOption,
-          otherText: selectedOption === "Other" ? otherText : null,
-        }),
-      });
+      // Check if already voted today
+      const today = new Date().toISOString().split('T')[0];
+      const { data: existing, error: checkError } = await supabase
+        .from("votes")
+        .select("id")
+        .eq("employee_name", name)
+        .eq("survey_id", survey.id)
+        .gte("created_at", `${today}T00:00:00`)
+        .lte("created_at", `${today}T23:59:59`)
+        .maybeSingle();
 
-      const data = await res.json();
-      if (res.ok) {
-        setStatus("success");
-      } else {
+      if (checkError) throw checkError;
+      if (existing) {
         setStatus("error");
-        setErrorMessage(data.error || "Failed to submit");
+        setErrorMessage("Already voted today");
+        return;
       }
-    } catch (err) {
+
+      const { error: insertError } = await supabase
+        .from("votes")
+        .insert([{
+          survey_id: survey.id,
+          employee_name: name,
+          answer: selectedOption,
+          other_text: selectedOption === "Other" ? otherText : null,
+        }]);
+
+      if (insertError) throw insertError;
+      setStatus("success");
+    } catch (err: any) {
       setStatus("error");
-      setErrorMessage("Network error");
+      setErrorMessage(err.message);
     }
   };
 

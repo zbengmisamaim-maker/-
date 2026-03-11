@@ -2,17 +2,24 @@ import React from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 import { Utensils, ArrowLeft, ArrowRight, Sparkles, Clock } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
 export default function LandingPage() {
   const [activeSurveyId, setActiveSurveyId] = React.useState<number | null>(null);
 
   React.useEffect(() => {
-    fetch("/api/surveys/active")
-      .then(res => res.json())
-      .then(data => {
-        if (data && !data.error) setActiveSurveyId(data.id);
-      })
-      .catch(console.error);
+    const fetchActiveSurvey = async () => {
+      const { data, error } = await supabase
+        .from("surveys")
+        .select("id")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (!error && data) setActiveSurveyId(data.id);
+    };
+    fetchActiveSurvey();
   }, []);
 
   return (
