@@ -17,7 +17,7 @@ export default function AdminPanel() {
   const [newOptions, setNewOptions] = useState<string[]>(["פיצה", "סושי", "סלט"]);
   const [newLanguages, setNewLanguages] = useState<Language[]>(["he"]);
   const [isCreating, setIsCreating] = useState(false);
-  const [appUrl, setAppUrl] = useState("");
+  const [appUrl, setAppUrl] = useState(window.location.origin);
   const [createdSurvey, setCreatedSurvey] = useState<Survey | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,14 +26,6 @@ export default function AdminPanel() {
   useEffect(() => {
     loadStats();
     loadAllSurveys();
-    fetch("/api/config")
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.appUrl) {
-          setAppUrl(data.appUrl);
-        }
-      })
-      .catch(() => setError("לא ניתן לטעון הגדרות שרת"));
   }, []);
 
   const loadStats = () => {
